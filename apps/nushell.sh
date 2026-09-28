@@ -175,6 +175,7 @@ if [ "$on_path" = 0 ]; then
 			read -r answer || answer=""
 			case "$answer" in
 				y | Y | yes | Yes | YES)
+					# shellcheck disable=SC2016 # literal $PATH must end up in the rc file
 					printf '\n# Added by mdriv/macos nushell installer\nexport PATH="%s:$PATH"\n' "$BINDIR" >>"$HOME/.zshrc"
 					path_action="added"
 					;;
@@ -197,6 +198,7 @@ case "$path_action" in
 		fi
 		;;
 	manual)
+		# shellcheck disable=SC2016 # literal $PATH must end up in the rc file
 		printf '    Add Nushell to your PATH by putting this in ~/.zshrc:\n        export PATH="%s:$PATH"\n    Then start it with:  nu\n' "$BINDIR"
 		;;
 esac
