@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: shellcheck --severity=style apps/*.sh
+      - name: POSIX syntax check
+        run: |
+          set -e
+          for f in apps/*.sh; do
+            sh -n "$f"
+          done
