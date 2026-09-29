@@ -1,21 +1,21 @@
 #!/bin/sh
-# apps/fzf.sh — install prebuilt fzf on macOS in one command.
+# apps/carapace.sh — install prebuilt carapace-bin on macOS in one command.
 # Part of https://github.com/mdrv/macos
 #
-# Downloads the official release tarball from GitHub, verifies its sha256
-# against GitHub's per-asset digest, and installs the fzf binary into
+# Downloads the official release archive from GitHub, verifies its sha256
+# against GitHub's per-asset digest, and installs the carapace binary into
 # ~/.local/bin.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/fzf.sh | sh
-#   sh fzf.sh [--version X.Y.Z] [--prefix DIR] [--no-path]
+#   curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/carapace.sh | sh
+#   sh carapace.sh [--version X.Y.Z] [--prefix DIR] [--no-path]
 #
-# Env: FZF_VERSION (pin a release, e.g. 0.74.4), FZF_PREFIX.
+# Env: CARAPACE_VERSION (pin a release, e.g. 1.8.0), CARAPACE_PREFIX.
 # Upgrade any time by running it again.
 
 set -eu
 
-REPO="junegunn/fzf"
+REPO="carapace-sh/carapace-bin"
 REPO_URL="https://github.com/$REPO"
 API_URL="https://api.github.com/repos/$REPO"
 
@@ -29,11 +29,11 @@ trap cleanup EXIT INT TERM
 
 usage() {
 	cat <<'EOF'
-fzf.sh — install prebuilt fzf on macOS (no compilation)
+carapace.sh — install prebuilt carapace-bin on macOS (no compilation)
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/fzf.sh | sh
-  sh fzf.sh [options]
+  curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/carapace.sh | sh
+  sh carapace.sh [options]
 
 Options:
   --version X.Y.Z   install a specific release (default: latest)
@@ -42,16 +42,16 @@ Options:
   -h, --help        show this help
 
 Environment:
-  FZF_VERSION       same as --version
-  FZF_PREFIX        same as --prefix
+  CARAPACE_VERSION  same as --version
+  CARAPACE_PREFIX   same as --prefix
 EOF
 }
 
 info() { printf '==> %s\n' "$1"; }
-err() { printf 'fzf: error: %s\n' "$1" >&2; exit 1; }
+err() { printf 'carapace: error: %s\n' "$1" >&2; exit 1; }
 
-VERSION="${FZF_VERSION:-}"
-PREFIX="${FZF_PREFIX:-$HOME/.local}"
+VERSION="${CARAPACE_VERSION:-}"
+PREFIX="${CARAPACE_PREFIX:-$HOME/.local}"
 ADD_PATH=1
 
 while [ $# -gt 0 ]; do
@@ -97,7 +97,8 @@ esac
 command -v curl >/dev/null 2>&1 || err "curl is required"
 command -v shasum >/dev/null 2>&1 || err "shasum is required"
 
-# fzf tags carry a v prefix (v0.74.4); accept pinned input with or without it.
+# carapace-bin tags carry a v prefix (v1.8.0); accept pinned input with or
+# without it.
 VERSION=${VERSION#v}
 
 # Resolve the release tag (latest or pinned) and remember the API response —
@@ -107,7 +108,7 @@ if [ -n "$VERSION" ]; then
 	info "resolving release v$VERSION"
 else
 	API="$API_URL/releases/latest"
-	info "resolving latest fzf release"
+	info "resolving latest carapace-bin release"
 fi
 RELEASE_JSON=$(curl -fsSL "$API") || err "could not fetch release info from the GitHub API (release '$VERSION' may not exist, or the API rate limit was hit — try again later)"
 if [ -z "$VERSION" ]; then
@@ -115,13 +116,13 @@ if [ -z "$VERSION" ]; then
 	[ -n "$VERSION" ] || err "could not determine the latest release (pin one with --version X.Y.Z)"
 fi
 
-ASSET="fzf-$VERSION-darwin_$ARCH.tar.gz"
+ASSET="carapace-bin_${VERSION}_darwin_${ARCH}.tar.gz"
 URL="$REPO_URL/releases/download/v$VERSION/$ASSET"
 BINDIR="$PREFIX/bin"
 
 OLD_VERSION=""
-if [ -x "$BINDIR/fzf" ]; then
-	OLD_VERSION=$("$BINDIR/fzf" --version 2>/dev/null | head -n 1 || true)
+if [ -x "$BINDIR/carapace" ]; then
+	OLD_VERSION=$("$BINDIR/carapace" --version 2>/dev/null | head -n 1 || true)
 fi
 
 TMP=$(mktemp -d)
@@ -147,14 +148,15 @@ fi
 
 info "extracting"
 tar -xzf "$TARBALL" -C "$TMP" || err "extraction failed"
-# fzf tarballs are flat: a single `fzf` binary at the archive root.
-[ -f "$TMP/fzf" ] || err "unexpected archive layout (fzf binary not found)"
+# carapace-bin tarballs are flat: a `carapace` binary (plus LICENSE and
+# README) at the archive root.
+[ -f "$TMP/carapace" ] || err "unexpected archive layout (carapace binary not found)"
 
 mkdir -p "$BINDIR" 2>/dev/null || err "cannot create $BINDIR (use --prefix or run under sudo)"
 info "installing into $BINDIR"
-install -m 0755 "$TMP/fzf" "$BINDIR/fzf" || err "could not write to $BINDIR (use --prefix or run under sudo)"
+install -m 0755 "$TMP/carapace" "$BINDIR/carapace" || err "could not write to $BINDIR (use --prefix or run under sudo)"
 
-NEW_VERSION=$("$BINDIR/fzf" --version 2>/dev/null | head -n 1)
+NEW_VERSION=$("$BINDIR/carapace" --version 2>/dev/null | head -n 1)
 
 # PATH: only relevant when the bin dir is not already on PATH. Offers to
 # append an export line to ~/.zshrc when running interactively; otherwise
@@ -175,7 +177,7 @@ if [ "$on_path" = 0 ]; then
 			case "$answer" in
 				y | Y | yes | Yes | YES)
 					# shellcheck disable=SC2016 # literal $PATH must end up in the rc file
-					printf '\n# Added by mdriv/macos fzf installer\nexport PATH="%s:$PATH"\n' "$BINDIR" >>"$HOME/.zshrc"
+					printf '\n# Added by mdriv/macos carapace installer\nexport PATH="%s:$PATH"\n' "$BINDIR" >>"$HOME/.zshrc"
 					path_action="added"
 					;;
 			esac
@@ -191,15 +193,16 @@ fi
 case "$path_action" in
 	already-on-path | already-in-zshrc | added)
 		if [ "$path_action" = "added" ]; then
-			printf '    PATH updated in ~/.zshrc — open a new terminal, then run:  fzf\n'
+			printf '    PATH updated in ~/.zshrc — open a new terminal, then run:  carapace --version\n'
 		else
-			printf '    Run it with:  fzf\n'
+			printf '    Run it with:  carapace --version\n'
 		fi
 		;;
 	manual)
 		# shellcheck disable=SC2016 # literal $PATH must end up in the rc file
-		printf '    Add fzf to your PATH by putting this in ~/.zshrc:\n        export PATH="%s:$PATH"\n    Then run it with:  fzf\n' "$BINDIR"
+		printf '    Add carapace to your PATH by putting this in ~/.zshrc:\n        export PATH="%s:$PATH"\n' "$BINDIR"
 		;;
 esac
-printf '    Shell integrations (key bindings, completions) are separate — see\n    https://github.com/junegunn/fzf#installation\n'
+printf '    Shell integration (add to ~/.zshrc):  source <(carapace zsh)\n'
+printf '    Docs:      https://carapace.sh\n'
 printf '    Upgrade:   run this script again\n'

@@ -129,8 +129,11 @@ info "downloading $ASSET"
 curl -fsSL "$URL" -o "$TARBALL" || err "download failed: $URL"
 
 DIGEST=$(printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
+	# Scan the whole JSON: exiting early would SIGPIPE the feeding printf on
+	# releases whose target asset sits past the 64 KiB pipe buffer.
 	index($0, asset) { found = 1; next }
-	found && /"digest":/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); print; exit }
+	found && /"digest":/ && dig == "" { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
+	END { print dig }
 ')
 if [ -n "$DIGEST" ]; then
 	info "verifying sha256 ($DIGEST)"

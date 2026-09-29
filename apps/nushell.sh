@@ -39,6 +39,7 @@ Options:
   --version X.Y.Z   install a specific release (default: latest)
   --prefix DIR      install under DIR/bin (default: ~/.local)
   --no-path         do not offer to add the binary dir to ~/.zshrc
+  --no-shell        do not offer to set Nushell as the login shell
   -h, --help        show this help
 
 Environment:
@@ -53,6 +54,7 @@ err() { printf 'nushell: error: %s\n' "$1" >&2; exit 1; }
 VERSION="${NU_VERSION:-}"
 PREFIX="${NU_PREFIX:-$HOME/.local}"
 ADD_PATH=1
+ADD_SHELL=1
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -76,6 +78,10 @@ while [ $# -gt 0 ]; do
 			;;
 		--no-path)
 			ADD_PATH=0
+			shift
+			;;
+		--no-shell)
+			ADD_SHELL=0
 			shift
 			;;
 		-h | --help)
@@ -129,8 +135,11 @@ info "downloading $ASSET"
 curl -fsSL "$URL" -o "$TARBALL" || err "download failed: $URL"
 
 DIGEST=$(printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
+	# Scan the whole JSON: exiting early would SIGPIPE the feeding printf on
+	# releases whose target asset sits past the 64 KiB pipe buffer.
 	index($0, asset) { found = 1; next }
-	found && /"digest":/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); print; exit }
+	found && /"digest":/ && dig == "" { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
+	END { print dig }
 ')
 if [ -n "$DIGEST" ]; then
 	info "verifying sha256 ($DIGEST)"
@@ -181,6 +190,39 @@ if [ "$on_path" = 0 ]; then
 					;;
 			esac
 		fi
+	fi
+fi
+
+# Default shell: offer to register nu in /etc/shells and make it the login
+# shell — this is what makes plain `chsh -s` work instead of failing with
+# "non-standard shell". Only offered interactively; never touched without
+# an explicit yes.
+if [ "$ADD_SHELL" = 1 ] && [ -t 0 ] && [ -t 1 ]; then
+	nu_path="$BINDIR/nu"
+	case "$BINDIR" in
+		/*) ;;
+		*) nu_path="$(cd "$BINDIR" && pwd)/nu" ;;
+	esac
+	if [ -x "$nu_path" ] && [ "${SHELL:-}" != "$nu_path" ]; then
+		printf '\nMake Nushell your login shell?\nNote: Nu is not POSIX sh — tools that assume bash/zsh may misbehave. [y/N] '
+		read -r answer || answer=""
+		case "$answer" in
+			y | Y | yes | Yes | YES)
+				shell_registered=""
+				if grep -qxF "$nu_path" /etc/shells 2>/dev/null; then
+					shell_registered=1
+				elif printf '%s\n' "$nu_path" | sudo tee -a /etc/shells >/dev/null; then
+					shell_registered=1
+				fi
+				if [ -n "$shell_registered" ] && chsh -s "$nu_path"; then
+					printf '    Default shell set to %s — log out and back in to use it.\n' "$nu_path"
+				else
+					printf '    Could not set the default shell (cancelled or failed). Manual steps:\n'
+					# shellcheck disable=SC2016
+					printf '        echo %s | sudo tee -a /etc/shells\n        chsh -s %s\n' "$nu_path" "$nu_path"
+				fi
+				;;
+		esac
 	fi
 fi
 
