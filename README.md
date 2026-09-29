@@ -22,6 +22,7 @@ builds. Every script:
 | [carapace](https://carapace.sh) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/carapace.sh \| sh` |
 | [unison](https://github.com/bcpierce00/unison) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/unison.sh \| sh` |
 | [git-delta](https://github.com/dandavison/delta) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/git-delta.sh \| sh` |
+| [tree-sitter CLI](https://github.com/tree-sitter/tree-sitter) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/tree-sitter-cli.sh \| sh` |
 
 ## Options
 
@@ -34,10 +35,10 @@ sh nushell.sh --no-path              # skip the ~/.zshrc offer
 sh nushell.sh --help
 ```
 
-| Flag | Env (nushell / fastfetch / fzf / carapace / unison / git-delta) | Effect |
+| Flag | Env (nushell / fastfetch / fzf / carapace / unison / git-delta / tree-sitter-cli) | Effect |
 | --- | --- | --- |
-| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` / `UNISON_VERSION` / `DELTA_VERSION` | pin a release |
-| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` / `UNISON_PREFIX` / `DELTA_PREFIX` | install root (binaries land in `DIR/bin`) |
+| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` / `UNISON_VERSION` / `DELTA_VERSION` / `TREE_SITTER_VERSION` | pin a release |
+| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` / `UNISON_PREFIX` / `DELTA_PREFIX` / `TREE_SITTER_PREFIX` | install root (binaries land in `DIR/bin`) |
 | `--no-path` | — | skip the PATH offer |
 | `--no-shell` | — | nushell only: skip the login-shell offer |
 

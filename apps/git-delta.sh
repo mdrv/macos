@@ -116,7 +116,7 @@ fetch_release() {
 		URL_GH_API="${API_URL}/releases/tags/$1"
 	else
 		info "resolving latest git-delta release"
-		URL_GH_API="${API_URL}/releases"
+		URL_GH_API="${API_URL}/releases/latest"
 	fi
 	RELEASE_JSON=$(curl -fsSL "$URL_GH_API") || err "could not fetch release info from the GitHub API${1:+ (release $1 may not exist)}, or the API rate limit was hit — try again later"
 }
