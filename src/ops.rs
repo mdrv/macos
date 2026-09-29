@@ -4,7 +4,7 @@
 use crate::cache;
 use crate::gh;
 use crate::receipt::{self, RcBlock, Receipt};
-use crate::registry::{self, App};
+use crate::registry::{self, App, Source};
 use crate::ui;
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
@@ -108,6 +108,69 @@ fn style_fmt(s: &str) -> String {
     console::style(s).bold().to_string()
 }
 
+struct Resolved {
+    version: String,
+    asset: String,
+    url: String,
+    digest: Option<String>,
+    upstream: String,
+}
+
+fn render_asset(app: &App, version: &str, arch: &str) -> String {
+    app.asset_template
+        .replace("{version}", version)
+        .replace("{arch}", arch)
+}
+
+/// Resolve the latest (or pinned) release of an app into the concrete asset
+/// to fetch, honouring per-source resolution rules and arch fallbacks.
+fn resolve(app: &App, version_req: Option<&str>, arch: &str) -> Result<Resolved> {
+    match app.source {
+        Source::GitHub => {
+            let rel = gh::fetch(app.repo, app.tag_prefix, version_req)
+                .with_context(|| format!("resolving {}", app.name))?;
+            let mut version = rel.version(app.tag_prefix);
+            let mut asset = render_asset(app, &version, arch);
+            let mut rel = rel;
+            // Arch fallback: the latest release may have dropped this arch.
+            if let Some(fb) = app.fallback_version {
+                if arch == "x86_64-apple-darwin" && rel.digest(&asset).is_none() {
+                    ui::info(&format!(
+                        "{}: no Intel build in {} — falling back to {fb}",
+                        app.name, version
+                    ));
+                    version = fb.to_string();
+                    asset = render_asset(app, &version, arch);
+                    rel = gh::fetch(app.repo, app.tag_prefix, Some(fb))?;
+                }
+            }
+            let tag = format!("{}{version}", app.tag_prefix);
+            Ok(Resolved {
+                digest: rel
+                    .digest(&asset)
+                    .map(|d| d.trim_start_matches("sha256:").to_string()),
+                url: gh::asset_url(app.repo, &tag, &asset),
+                version,
+                asset,
+                upstream: format!("https://github.com/{}", app.repo),
+            })
+        }
+        Source::Nodejs => {
+            let version = gh::fetch_node(version_req)?;
+            let asset = render_asset(app, &version, arch);
+            let url = format!("https://nodejs.org/dist/v{version}/{asset}");
+            let digest = gh::node_digest(&version, &asset)?;
+            Ok(Resolved {
+                version,
+                asset,
+                url,
+                digest: Some(digest),
+                upstream: "https://nodejs.org/dist".into(),
+            })
+        }
+    }
+}
+
 fn expand_outputs(app: &App, prefix: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     for pattern in app.output_globs {
@@ -132,33 +195,19 @@ pub fn install_one(
     skip_path_offer: bool,
 ) -> Result<()> {
     let arch = (app.arch_token)(&registry::uname_m()?)?;
-    let rel = gh::fetch(app.repo, app.tag_prefix, version_req.as_deref())
-        .with_context(|| format!("resolving {}", app.name))?;
-    let version = rel.version(app.tag_prefix);
-    let asset = app
-        .asset_template
-        .replace("{version}", &version)
-        .replace("{arch}", arch);
-    let tag = format!("{}{version}", app.tag_prefix);
-    let url = format!(
-        "https://github.com/{}/releases/download/{tag}/{asset}",
-        app.repo
-    );
-    let digest = rel
-        .digest(&asset)
-        .map(|d| d.trim_start_matches("sha256:").to_string());
+    let r = resolve(app, version_req.as_deref(), arch)?;
 
     ui::info(&format!(
         "{} {} ({}{})",
         app.name,
-        version,
-        asset,
-        digest
+        r.version,
+        r.asset,
+        r.digest
             .as_deref()
             .map(|d| format!(" sha256:{d}"))
             .unwrap_or_default()
     ));
-    let file = cache::ensure(&asset, &url, digest.as_deref())?;
+    let file = cache::ensure(&r.asset, &r.url, r.digest.as_deref())?;
 
     // Run the embedded installer script with the verified cache entry.
     let script = tempfile::NamedTempFile::new()?;
@@ -169,7 +218,7 @@ pub fn install_one(
         .arg(prefix)
         .arg("--no-path")
         .args(app.extra_args)
-        .env("MDRV_VERSION", &version)
+        .env("MDRV_VERSION", &r.version)
         .env("MDRV_ASSET_FILE", &file)
         .status()
         .context("could not run sh")?;
@@ -188,18 +237,20 @@ pub fn install_one(
 
     receipt::save(&Receipt {
         name: app.name.into(),
-        version: version.clone(),
-        asset: asset.clone(),
-        sha256: digest.clone(),
+        version: r.version.clone(),
+        asset: r.asset.clone(),
+        sha256: r.digest.clone(),
         installed_at: epoch_now(),
         prefix: prefix.into(),
         files: files.clone(),
         rc_blocks: rc_block.into_iter().collect(),
+        previous_shell: None,
     })?;
 
     ui::info(&format!(
-        "{} {version} installed → {} ({} files tracked)",
+        "{} {} installed → {} ({} files tracked)",
         app.name,
+        r.version,
         bindir(prefix).display(),
         files.len()
     ));
@@ -288,37 +339,99 @@ pub fn uninstall(specs: &[String], purge: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn configure(specs: &[String]) -> Result<()> {
-    if specs.is_empty() {
-        bail!("configure needs at least one package name");
-    }
-    for spec in specs {
-        let (name, _) = parse_pkg(spec)?;
-        let app = registry::find(name).ok_or_else(|| anyhow::anyhow!("unknown package: {name}"))?;
-        let rec = receipt::load(name)?;
-        let prefix = rec
-            .as_ref()
-            .map(|r| r.prefix.clone())
-            .unwrap_or_else(default_prefix);
-        ensure_path(&prefix, false)?;
+/// A configurable aspect of a package, offered interactively by `configure`.
+struct Action {
+    id: &'static str,
+    label: String,
+}
 
-        if app.name == "nushell" {
-            configure_nushell(&prefix)?;
+fn actions(app: &App) -> Vec<Action> {
+    match app.name {
+        "nushell" => vec![
+            Action {
+                id: "set-login-shell",
+                label: "Set as login shell".into(),
+            },
+            Action {
+                id: "revert-login-shell",
+                label: "Revert login shell to the previous one".into(),
+            },
+        ],
+        _ => vec![],
+    }
+}
+
+pub fn configure(pkg: &str, action: Option<&str>) -> Result<()> {
+    let app = registry::find(pkg).ok_or_else(|| anyhow::anyhow!("unknown package: {pkg}"))?;
+    let acts = actions(app);
+    let chosen: Option<&Action> = match action {
+        Some(id) => Some(acts.iter().find(|a| a.id == id).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown action {id:?} for {pkg} (available: {})",
+                acts.iter().map(|a| a.id).collect::<Vec<_>>().join(", ")
+            )
+        })?),
+        None if acts.is_empty() => {
+            ui::info(&format!("nothing to configure for {pkg}"));
+            None
         }
-        println!("    {}", app.hint);
+        None if !ui::is_interactive() => {
+            println!(
+                "configure actions for {pkg}: {}",
+                acts.iter().map(|a| a.id).collect::<Vec<_>>().join(", ")
+            );
+            bail!("pass an action when not attached to a terminal: mdrv-macos configure {pkg} <action>")
+        }
+        None => {
+            let labels: Vec<String> = acts.iter().map(|a| a.label.clone()).collect();
+            let picked = inquire::Select::new(&format!("Configure {pkg}:"), labels)
+                .prompt_skippable()
+                .map_err(|e| anyhow::anyhow!("selection cancelled: {e}"))?;
+            picked.and_then(|l| acts.iter().find(|a| a.label == l))
+        }
+    };
+    let Some(a) = chosen else {
+        return Ok(());
+    };
+
+    let rec = receipt::load(pkg)?;
+    let prefix = rec
+        .as_ref()
+        .map(|r| r.prefix.clone())
+        .unwrap_or_else(default_prefix);
+    match a.id {
+        "set-login-shell" => set_login_shell(&prefix, rec)?,
+        "revert-login-shell" => revert_login_shell(rec)?,
+        _ => unreachable!(),
     }
     Ok(())
 }
 
+/// The login shell recorded in Directory Services for the current user.
+fn current_login_shell() -> Result<String> {
+    let user = std::env::var("USER").unwrap_or_default();
+    let out = std::process::Command::new("dscl")
+        .args([".", "-read", &format!("/Users/{user}"), "UserShell"])
+        .output()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok(text
+        .strip_prefix("UserShell: ")
+        .unwrap_or(&text)
+        .trim()
+        .to_string())
+}
+
 /// Register nu in /etc/shells and set it as the login shell, transparently
-/// handing the terminal to sudo/chsh for their prompts.
-fn configure_nushell(prefix: &Path) -> Result<()> {
+/// handing the terminal to sudo/chsh for their prompts. The previous shell is
+/// recorded in the receipt so `revert-login-shell` can restore it.
+fn set_login_shell(prefix: &Path, rec: Option<Receipt>) -> Result<()> {
     let nu = bindir(prefix).join("nu");
     if !nu.exists() {
         bail!("nu not found at {}", nu.display());
     }
     let nu = nu.canonicalize().unwrap_or(nu);
-    if std::env::var("SHELL").is_ok_and(|s| Path::new(&s) == nu) {
+    let current = current_login_shell()?;
+    if Path::new(&current) == nu {
         ui::info(&format!("login shell already {nu:?}"));
         return Ok(());
     }
@@ -343,16 +456,70 @@ fn configure_nushell(prefix: &Path) -> Result<()> {
     if !ui::confirm(&format!("Set the login shell to {nu:?} (runs chsh)?")) {
         return Ok(());
     }
+    // Record the previous shell (once) so it can be restored later.
+    let mut rec = rec.ok_or_else(|| {
+        anyhow::anyhow!(
+            "{nu:?} was not installed via mdrv-macos — no receipt to record the previous shell in"
+        )
+    })?;
+    if rec.previous_shell.is_none() {
+        rec.previous_shell = Some(current);
+        receipt::save(&rec)?;
+    }
     let status = std::process::Command::new("chsh")
         .arg("-s")
         .arg(&nu)
         .status()?;
     if status.success() {
-        ui::info(&format!("login shell set to {nu:?} — log out and back in"));
+        ui::info(&format!(
+            "login shell set to {nu:?} — log out and back in (revert: mdrv-macos configure nushell revert-login-shell)"
+        ));
     } else {
         bail!("chsh failed");
     }
     Ok(())
+}
+
+/// Restore the login shell captured before `set-login-shell` changed it.
+fn revert_login_shell(rec: Option<Receipt>) -> Result<()> {
+    let Some(mut rec) = rec else {
+        bail!("no receipt — this package was not installed via mdrv-macos");
+    };
+    let Some(prev) = rec.previous_shell.clone() else {
+        ui::warn("no previous shell recorded — nothing was changed via mdrv-macos");
+        println!("    set one manually with: chsh -s /bin/zsh");
+        return Ok(());
+    };
+    if !ui::confirm(&format!(
+        "Set the login shell back to {prev:?} (runs chsh)?"
+    )) {
+        return Ok(());
+    }
+    let status = std::process::Command::new("chsh")
+        .arg("-s")
+        .arg(&prev)
+        .status()?;
+    if status.success() {
+        rec.previous_shell = None;
+        receipt::save(&rec)?;
+        ui::info(&format!(
+            "login shell reverted to {prev:?} — log out and back in"
+        ));
+    } else {
+        bail!("chsh failed");
+    }
+    Ok(())
+}
+
+/// Latest upstream version of an app, honouring its source.
+fn latest_version(app: &App) -> Result<String> {
+    match app.source {
+        Source::GitHub => {
+            let rel = gh::fetch(app.repo, app.tag_prefix, None)?;
+            Ok(rel.version(app.tag_prefix))
+        }
+        Source::Nodejs => gh::fetch_node(None),
+    }
 }
 
 pub fn upgrade(specs: &[String]) -> Result<()> {
@@ -373,8 +540,7 @@ pub fn upgrade(specs: &[String]) -> Result<()> {
         let Some(app) = registry::find(&rec.name) else {
             continue;
         };
-        let rel = gh::fetch(app.repo, app.tag_prefix, None)?;
-        let latest = rel.version(app.tag_prefix);
+        let latest = latest_version(app)?;
         if latest != rec.version {
             outdated.push((app, rec, latest));
         } else {
@@ -442,24 +608,14 @@ pub fn info(spec: &str) -> Result<()> {
     let (name, _) = parse_pkg(spec)?;
     let app = registry::find(name).ok_or_else(|| anyhow::anyhow!("unknown package: {name}"))?;
     let arch = (app.arch_token)(&registry::uname_m()?)?;
+    let r = resolve(app, None, arch)?;
     println!("package:   {}", app.name);
     println!("summary:   {}", app.summary);
-    println!("upstream:  https://github.com/{}", app.repo);
-    let rel = gh::fetch(app.repo, app.tag_prefix, None)?;
-    let latest = rel.version(app.tag_prefix);
-    println!("latest:    {latest}");
-    println!(
-        "asset:     {}",
-        app.asset_template
-            .replace("{version}", &latest)
-            .replace("{arch}", arch)
-    );
-    if let Some(d) = rel.digest(
-        &app.asset_template
-            .replace("{version}", &latest)
-            .replace("{arch}", arch),
-    ) {
-        println!("digest:    {d}");
+    println!("upstream:  {}", r.upstream);
+    println!("latest:    {}", r.version);
+    println!("asset:     {}", r.asset);
+    if let Some(d) = &r.digest {
+        println!("digest:    sha256:{d}");
     }
     match receipt::load(name)? {
         Some(r) => {

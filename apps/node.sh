@@ -102,16 +102,22 @@ armv7l | armv8l) ARCH_TAG="armv7l" ;;
 *) err "unsupported architecture: $ARCH" ;;
 esac
 
-# --- resolve version -------------------------------------------------------
-case "$WANT_VERSION" in
-v*) WANT_VERSION="${WANT_VERSION#v}" ;;
-esac
-if [ -z "$WANT_VERSION" ]; then
-	info "resolving latest Node.js release"
-	VERSION="$(curl -fsSL "$DIST_URL/index.json" | sed -n 's/.*"version":"v\([0-9.]*\)".*/\1/p' | head -n 1)"
-	[ -n "$VERSION" ] || err "could not resolve the latest version from nodejs.org"
+	# mdrv-macos contract: MDRV_VERSION/MDRV_ASSET_FILE skip resolution, download
+	# and verification (the manager has already done both).
+if [ -n "${MDRV_VERSION:-}" ]; then
+	WANT_VERSION=${MDRV_VERSION#v}
 else
-	VERSION="$WANT_VERSION"
+	# --- resolve version -------------------------------------------------------
+	case "$WANT_VERSION" in
+	v*) WANT_VERSION="${WANT_VERSION#v}" ;;
+	esac
+	if [ -z "$WANT_VERSION" ]; then
+		info "resolving latest Node.js release"
+		VERSION="$(curl -fsSL "$DIST_URL/index.json" | sed -n 's/.*"version":"v\([0-9.]*\)".*/\1/p' | head -n 1)"
+		[ -n "$VERSION" ] || err "could not resolve the latest version from nodejs.org"
+	else
+		VERSION="$WANT_VERSION"
+	fi
 fi
 
 ASSET="node-v$VERSION-$OS_TAG-$ARCH_TAG.tar.gz"
@@ -123,21 +129,26 @@ info "resolving release $VERSION"
 
 # --- download --------------------------------------------------------------
 TMPD="$(mktemp -d)"
-info "downloading $ASSET"
-curl -fsSL "$ASSET_URL" -o "$TMPD/$ASSET" || err "download failed (release $VERSION may not exist, or the network is unreachable)"
+if [ -n "${MDRV_ASSET_FILE:-}" ]; then
+	info "installing from mdrv-macos verified cache: $(basename -- "$MDRV_ASSET_FILE")"
+	cp -- "$MDRV_ASSET_FILE" "$TMPD/$ASSET"
+else
+	info "downloading $ASSET"
+	curl -fsSL "$ASSET_URL" -o "$TMPD/$ASSET" || err "download failed (release $VERSION may not exist, or the network is unreachable)"
 
-# --- verify ----------------------------------------------------------------
-info "verifying sha256 against SHASUMS256.txt"
-EXPECTED="$(curl -fsSL "$SUMS_URL" | grep -F " $ASSET" | awk '{print $1}')"
-case "$EXPECTED" in
-[0-9a-f]*) ;;
-*) err "no entry for $ASSET in SHASUMS256.txt" ;;
-esac
-ACTUAL="$(/usr/bin/shasum -a 256 "$TMPD/$ASSET" | awk '{print $1}')"
-[ "$ACTUAL" = "$EXPECTED" ] || err "checksum mismatch — the download is corrupted or was tampered with"
-info "checksum OK (sha256:$EXPECTED)"
+	# --- verify ----------------------------------------------------------------
+	info "verifying sha256 against SHASUMS256.txt"
+	EXPECTED="$(curl -fsSL "$SUMS_URL" | grep -F " $ASSET" | awk '{print $1}')"
+	case "$EXPECTED" in
+	[0-9a-f]*) ;;
+	*) err "no entry for $ASSET in SHASUMS256.txt" ;;
+	esac
+	ACTUAL="$(/usr/bin/shasum -a 256 "$TMPD/$ASSET" | awk '{print $1}')"
+	[ "$ACTUAL" = "$EXPECTED" ] || err "checksum mismatch — the download is corrupted or was tampered with"
+	info "checksum OK (sha256:$EXPECTED)"
 
-# --- extract & install -----------------------------------------------------
+	# --- extract & install -----------------------------------------------------
+fi
 info "extracting"
 tar -xzf "$TMPD/$ASSET" -C "$TMPD"
 SRC="$TMPD/node-v$VERSION-$OS_TAG-$ARCH_TAG"

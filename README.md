@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/scripts/install.sh 
 | --- | --- |
 | `mdrv-macos install [pkg[@ver]…]` (alias `add`) | install; bare → interactive multi-select (filter as you type) |
 | `mdrv-macos uninstall <pkg>` (alias `remove`) | remove exactly the files + rc blocks recorded in the receipt; `--purge` also deletes app config (double confirmation) |
-| `mdrv-macos configure <pkg>` | installer-level config only (login shell, PATH) — no download |
+| `mdrv-macos configure <pkg> [action]` | interactive menu of configure actions (`set-login-shell`, `revert-login-shell` for nushell — the previous shell is recorded for revert); pass an action id for scripting |
 | `mdrv-macos upgrade [pkg…]` | re-resolve latest upstream, reinstall what differs |
 | `mdrv-macos list` / `info <pkg>` | installed packages / full detail incl. owned files |
 | `mdrv-macos cache ls\|clean` | downloaded release archives (`~/.cache/mdrv-macos/pkg`), sha-keyed, reused across installs |
@@ -91,7 +91,11 @@ the cache, then runs the **same embedded installer script** with
 standalone via `curl | sh`, and every write is recorded in
 `~/.local/state/mdrv-macos/<pkg>.json` for clean uninstalls.
 Override points: `MDRV_CACHE_DIR`, `MDRV_STATE_DIR`, `MDRV_MACOS_PREFIX`.
-Currently packaged: `nushell`, `fzf`, `fnm`.
+Currently packaged: `nushell`, `fzf`, `fnm`, `fastfetch`, `carapace`,
+`unison`, `git-delta`, `tree-sitter-cli`, `turso`, `node`.
+Verification is per-source: GitHub's per-asset digests, or Node's
+`SHASUMS256.txt`. Packages that dropped Intel builds (git-delta after
+0.18.2) fall back to the last version that shipped one.
 
 ## License
 

@@ -1,6 +1,6 @@
 [package]
 name = "mdrv-macos"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Curated binary package manager for macOS (mdrv/macos)"
 license = "GPL-3.0"

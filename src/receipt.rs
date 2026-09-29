@@ -34,6 +34,9 @@ pub struct Receipt {
     pub prefix: PathBuf,
     pub files: Vec<PathBuf>,
     pub rc_blocks: Vec<RcBlock>,
+    /// Login shell captured before `configure` changed it (for revert).
+    #[serde(default)]
+    pub previous_shell: Option<String>,
 }
 
 pub fn path(name: &str) -> PathBuf {
