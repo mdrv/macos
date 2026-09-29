@@ -191,4 +191,4 @@ fi
 info "installed Node.js v$VERSION into $DEST"
 "$BINDIR/node" --version
 "$BINDIR/npm" --version >/dev/null 2>&1 && printf '    npm %s\n' "$("$BINDIR/npm" --version)"
-printf '    run `node --version` in a new shell to confirm\n'
+printf '    run node --version in a new shell to confirm\n'

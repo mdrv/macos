@@ -162,7 +162,9 @@ if [ -f "$TMPD/fnm" ]; then
 else
 	FNM_BIN="$(find "$TMPD" -type f -name fnm -print -quit)"
 fi
-[ -n "$FNM_BIN" ] && [ -f "$FNM_BIN" ] || err "unexpected zip layout (no fnm binary)"
+if [ -z "$FNM_BIN" ] || [ ! -f "$FNM_BIN" ]; then
+	err "unexpected zip layout (no fnm binary)"
+fi
 
 BINDIR="$PREFIX/bin"
 mkdir -p -- "$BINDIR"
