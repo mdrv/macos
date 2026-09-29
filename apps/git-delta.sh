@@ -126,14 +126,17 @@ if [ -n "$VERSION" ]; then
 else
 	fetch_release ""
 	if [ "$TARGET" = "x86_64-apple-darwin" ]; then
-		case "$RELEASE_JSON" in
-			*"x86_64-apple-darwin.tar.gz"*) ;;
-			*)
-				info "upstream stopped shipping Intel builds after $LAST_INTEL_VERSION — pinning to it"
-				VERSION="$LAST_INTEL_VERSION"
-				fetch_release "$VERSION"
-				;;
-		esac
+		VERSION=$(printf '%s\n' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
+		[ -n "$VERSION" ] || err "could not determine the latest release (pin one with --version X.Y.Z)"
+		# Match the exact asset-name field — the release notes text may also
+		# mention the triple, which must not count as an Intel build existing.
+		if printf '%s' "$RELEASE_JSON" | grep -qF "\"name\": \"delta-$VERSION-x86_64-apple-darwin.tar.gz\""; then
+			:
+		else
+			info "upstream stopped shipping Intel builds after $LAST_INTEL_VERSION — pinning to it"
+			VERSION="$LAST_INTEL_VERSION"
+			fetch_release "$VERSION"
+		fi
 	fi
 fi
 
