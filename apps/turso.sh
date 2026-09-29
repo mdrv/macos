@@ -218,6 +218,6 @@ case "$path_action" in
 		printf '    Add turso to your PATH by putting this in ~/.zshrc:\n        export PATH="%s:$PATH"\n    Then run it with:  tursodb --version\n' "$BINDIR"
 		;;
 esac
-printf '    The upstream binary is tursodb; `turso` is a symlink to it.\n'
+printf '    The upstream binary is tursodb; "turso" is a symlink to it.\n'
 printf '    Shell:              tursodb (SQLite-compatible database shell)\n'
 printf '    Upgrade:   run this script again\n'
