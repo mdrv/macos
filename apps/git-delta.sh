@@ -113,10 +113,12 @@ fetch_release() {
 	# $1: tag (empty = latest). Sets RELEASE_JSON.
 	if [ -n "$1" ]; then
 		info "resolving release $1"
+		URL_GH_API="${API_URL}/releases/tags/$1"
 	else
 		info "resolving latest git-delta release"
+		URL_GH_API="${API_URL}/releases"
 	fi
-	RELEASE_JSON=$(curl -fsSL "${API_URL}/releases/${1:+tags/}$1") || err "could not fetch release info from the GitHub API (release '$1' may not exist, or the API rate limit was hit — try again later)"
+	RELEASE_JSON=$(curl -fsSL "$URL_GH_API") || err "could not fetch release info from the GitHub API${1:+ (release '$1' may not exist)}, or the API rate limit was hit — try again later"
 }
 
 if [ -n "$VERSION" ]; then
