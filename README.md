@@ -66,6 +66,33 @@ env-prefix block at the top, the architecture → asset-name mapping, the
 expected archive layout, and the list of binaries to install + final
 hints. Run `sh -n` and `shellcheck` on it; CI enforces both.
 
+## mdrv-macos (the manager)
+
+The installers above stay single-file and standalone, but `mdrv-macos`
+ orchestrates them pacman-style:
+
+```
+curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/scripts/install.sh | sh
+```
+
+| Command | Behaviour |
+| --- | --- |
+| `mdrv-macos install [pkg[@ver]…]` (alias `add`) | install; bare → interactive multi-select (filter as you type) |
+| `mdrv-macos uninstall <pkg>` (alias `remove`) | remove exactly the files + rc blocks recorded in the receipt; `--purge` also deletes app config (double confirmation) |
+| `mdrv-macos configure <pkg>` | installer-level config only (login shell, PATH) — no download |
+| `mdrv-macos upgrade [pkg…]` | re-resolve latest upstream, reinstall what differs |
+| `mdrv-macos list` / `info <pkg>` | installed packages / full detail incl. owned files |
+| `mdrv-macos cache ls\|clean` | downloaded release archives (`~/.cache/mdrv-macos/pkg`), sha-keyed, reused across installs |
+| `mdrv-macos self-update` | replace the manager binary from its own releases |
+
+Design: the manager downloads and checksum-verifies each release asset into
+the cache, then runs the **same embedded installer script** with
+`MDRV_ASSET_FILE` + `MDRV_NO_DOWNLOAD` set — so `apps/*.sh` keep working
+standalone via `curl | sh`, and every write is recorded in
+`~/.local/state/mdrv-macos/<pkg>.json` for clean uninstalls.
+Override points: `MDRV_CACHE_DIR`, `MDRV_STATE_DIR`, `MDRV_MACOS_PREFIX`.
+Currently packaged: `nushell`, `fzf`, `fnm`.
+
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).

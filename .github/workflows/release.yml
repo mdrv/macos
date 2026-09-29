@@ -1,0 +1,62 @@
+# Release pipeline: build both macOS slices for a `v*` tag, then attach
+# archives + SHA256SUMS + the bootstrap installer to a GitHub Release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both slices build from the same macOS runner: Apple's clang ships
+        # both architecture slices, so x86_64 is a plain cross-compile.
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-latest
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --target "$TARGET"
+      - name: Package
+        run: |
+          mkdir -p "pkg/mdrv-macos" dist
+          cp "target/$TARGET/release/mdrv-macos" pkg/mdrv-macos/
+          cp README.md LICENSE pkg/mdrv-macos/
+          # mdrv-macos-v0.1.0-<rust-target>.tar.gz
+          tar -czf "dist/mdrv-macos-${GITHUB_REF_NAME}-${TARGET}.tar.gz" -C pkg mdrv-macos
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    if: ${{ !cancelled() && !failure() && startsWith(github.ref, 'refs/tags/') }}
+    needs: [macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: dist
+      - name: Bundle bootstrap installer
+        run: cp scripts/install.sh dist/
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+      - name: Create release
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}

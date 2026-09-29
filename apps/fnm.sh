@@ -110,48 +110,60 @@ Linux)
 esac
 
 # --- resolve version -------------------------------------------------------
+# mdrv-macos contract: MDRV_VERSION/MDRV_ASSET_FILE skip resolution, download
+# and verification — the manager has already cached a checksum-verified asset.
 case "$WANT_VERSION" in
 v*) WANT_VERSION="${WANT_VERSION#v}" ;;
 esac
-fetch_release() {
-	if [ -n "${1:-}" ]; then
-		URL_GH_API="$API_URL/releases/tags/v$1"
-	else
-		URL_GH_API="$API_URL/releases/latest" # skips prereleases
-	fi
-	curl -fsSL "$URL_GH_API" || err "could not fetch release info from the GitHub API${1:+ (release $1 may not exist)}"
-}
-info "resolving ${WANT_VERSION:+release $WANT_VERSION}${WANT_VERSION:-latest fnm release}"
-RELEASE_JSON="$(fetch_release "$WANT_VERSION")"
-VERSION="$(printf '%s\n' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"v\([0-9][0-9.]*\)".*/\1/p' | head -n 1)"
-[ -n "$VERSION" ] || err "could not determine the release tag"
+if [ -n "${MDRV_VERSION:-}" ]; then
+	VERSION="${MDRV_VERSION#v}"
+else
+	fetch_release() {
+		if [ -n "${1:-}" ]; then
+			URL_GH_API="$API_URL/releases/tags/v$1"
+		else
+			URL_GH_API="$API_URL/releases/latest" # skips prereleases
+		fi
+		curl -fsSL "$URL_GH_API" || err "could not fetch release info from the GitHub API${1:+ (release $1 may not exist)}"
+	}
+	info "resolving ${WANT_VERSION:+release $WANT_VERSION}${WANT_VERSION:-latest fnm release}"
+	RELEASE_JSON="$(fetch_release "$WANT_VERSION")"
+	VERSION="$(printf '%s\n' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"v\([0-9][0-9.]*\)".*/\1/p' | head -n 1)"
+	[ -n "$VERSION" ] || err "could not determine the release tag"
+fi
 ASSET_URL="$REPO_URL/releases/download/v$VERSION/$ASSET"
 
 # --- download --------------------------------------------------------------
 TMPD="$(mktemp -d)"
-info "downloading $ASSET"
-curl -fsSL "$ASSET_URL" -o "$TMPD/$ASSET" || err "download failed (asset $ASSET may not exist for release $VERSION)"
 
-# --- verify ----------------------------------------------------------------
-info "verifying sha256"
-# scan only the JSON object of our asset: a later asset's "name" line ends the
-# window, and only a full sha256:<64 hex> value is accepted
-DIGEST="$(
-	printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
-		index($0, asset) { found = 1; next }
-		/"name":/ { found = 0 }
-		found && dig == "" && /"digest": *"sha256:[0-9a-f]{64}"/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
-		END { print dig }
-	'
-)"
-case "$DIGEST" in
-sha256:[0-9a-f]*) ;;
-*) info "no digest published for this asset — skipping verification" ;;
-esac
-if [ -n "$DIGEST" ]; then
-	ACTUAL="$(/usr/bin/shasum -a 256 "$TMPD/$ASSET" | awk '{print $1}')"
-	[ "$ACTUAL" = "${DIGEST#sha256:}" ] || err "checksum mismatch — the download is corrupted or was tampered with"
-	info "checksum OK ($DIGEST)"
+if [ -n "${MDRV_ASSET_FILE:-}" ]; then
+	info "installing from mdrv-macos verified cache: $(basename -- "$MDRV_ASSET_FILE")"
+	cp -- "$MDRV_ASSET_FILE" "$TMPD/$ASSET"
+else
+	info "downloading $ASSET"
+	curl -fsSL "$ASSET_URL" -o "$TMPD/$ASSET" || err "download failed (asset $ASSET may not exist for release $VERSION)"
+
+	# --- verify ------------------------------------------------------------
+	info "verifying sha256"
+	# scan only the JSON object of our asset: a later asset's "name" line ends the
+	# window, and only a full sha256:<64 hex> value is accepted
+	DIGEST="$(
+		printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
+			index($0, asset) { found = 1; next }
+			/"name":/ { found = 0 }
+			found && dig == "" && /"digest": *"sha256:[0-9a-f]{64}"/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
+			END { print dig }
+		'
+	)"
+	case "$DIGEST" in
+	sha256:[0-9a-f]*) ;;
+	*) info "no digest published for this asset — skipping verification" ;;
+	esac
+	if [ -n "$DIGEST" ]; then
+		ACTUAL="$(/usr/bin/shasum -a 256 "$TMPD/$ASSET" | awk '{print $1}')"
+		[ "$ACTUAL" = "${DIGEST#sha256:}" ] || err "checksum mismatch — the download is corrupted or was tampered with"
+		info "checksum OK ($DIGEST)"
+	fi
 fi
 
 # --- extract & install -----------------------------------------------------

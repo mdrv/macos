@@ -102,17 +102,23 @@ VERSION=${VERSION#v}
 
 # Resolve the release tag (latest or pinned) and remember the API response —
 # it carries the per-asset sha256 digests used for verification below.
-if [ -n "$VERSION" ]; then
+# mdrv-macos contract: MDRV_VERSION/MDRV_ASSET_FILE skip resolution, download
+# and verification — the manager has already cached a checksum-verified asset.
+if [ -n "${MDRV_VERSION:-}" ]; then
+	VERSION=${MDRV_VERSION#v}
+elif [ -n "$VERSION" ]; then
 	API="$API_URL/releases/tags/v$VERSION"
 	info "resolving release v$VERSION"
 else
 	API="$API_URL/releases/latest"
 	info "resolving latest fzf release"
 fi
-RELEASE_JSON=$(curl -fsSL "$API") || err "could not fetch release info from the GitHub API (release '$VERSION' may not exist, or the API rate limit was hit — try again later)"
-if [ -z "$VERSION" ]; then
-	VERSION=$(printf '%s\n' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
-	[ -n "$VERSION" ] || err "could not determine the latest release (pin one with --version X.Y.Z)"
+if [ -z "${MDRV_VERSION:-}" ]; then
+	RELEASE_JSON=$(curl -fsSL "$API") || err "could not fetch release info from the GitHub API (release '$VERSION' may not exist, or the API rate limit was hit — try again later)"
+	if [ -z "$VERSION" ]; then
+		VERSION=$(printf '%s\n' "$RELEASE_JSON" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
+		[ -n "$VERSION" ] || err "could not determine the latest release (pin one with --version X.Y.Z)"
+	fi
 fi
 
 ASSET="fzf-$VERSION-darwin_$ARCH.tar.gz"
@@ -127,25 +133,30 @@ fi
 TMP=$(mktemp -d)
 TARBALL="$TMP/$ASSET"
 
-info "downloading $ASSET"
-curl -fsSL "$URL" -o "$TARBALL" || err "download failed: $URL"
-
-DIGEST=$(printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
-	# Scan the whole JSON: exiting early would SIGPIPE the feeding printf on
-	# releases whose target asset sits past the 64 KiB pipe buffer.
-	index($0, asset) { found = 1; next }
-	# A later "name" line ends the JSON object of this asset — without the
-	# reset below, an asset with no digest would steal the next digest.
-	/"name":/ { found = 0 }
-	found && dig == "" && /"digest": *"sha256:[0-9a-f]{64}"/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
-	END { print dig }
-')
-if [ -n "$DIGEST" ]; then
-	info "verifying sha256 ($DIGEST)"
-	printf '%s  %s\n' "${DIGEST#sha256:}" "$TARBALL" | shasum -a 256 -c - >/dev/null 2>&1 ||
-		err "checksum mismatch — the download is corrupted or was tampered with"
+if [ -n "${MDRV_ASSET_FILE:-}" ]; then
+	info "installing from mdrv-macos verified cache: $(basename -- "$MDRV_ASSET_FILE")"
+	cp -- "$MDRV_ASSET_FILE" "$TARBALL"
 else
-	info "no digest published for this asset — skipping checksum verification"
+	info "downloading $ASSET"
+	curl -fsSL "$URL" -o "$TARBALL" || err "download failed: $URL"
+
+	DIGEST=$(printf '%s\n' "$RELEASE_JSON" | awk -v asset="\"name\": \"$ASSET\"" '
+		# Scan the whole JSON: exiting early would SIGPIPE the feeding printf on
+		# releases whose target asset sits past the 64 KiB pipe buffer.
+		index($0, asset) { found = 1; next }
+		# A later "name" line ends the JSON object of this asset — without the
+		# reset below, an asset with no digest would steal the next digest.
+		/"name":/ { found = 0 }
+		found && dig == "" && /"digest": *"sha256:[0-9a-f]{64}"/ { sub(/^.*"digest": *"/, ""); sub(/".*$/, ""); dig = $0 }
+		END { print dig }
+	')
+	if [ -n "$DIGEST" ]; then
+		info "verifying sha256 ($DIGEST)"
+		printf '%s  %s\n' "${DIGEST#sha256:}" "$TARBALL" | shasum -a 256 -c - >/dev/null 2>&1 ||
+			err "checksum mismatch — the download is corrupted or was tampered with"
+	else
+		info "no digest published for this asset — skipping checksum verification"
+	fi
 fi
 
 info "extracting"

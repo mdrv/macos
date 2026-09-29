@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  rust:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy
+        run: cargo clippy -- -D warnings
+      - name: build & test
+        run: |
+          cargo build
+          cargo test
+
   lint:
     runs-on: ubuntu-latest
     steps:

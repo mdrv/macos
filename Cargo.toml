@@ -1,0 +1,28 @@
+[package]
+name = "mdrv-macos"
+version = "0.1.0"
+edition = "2021"
+description = "Curated binary package manager for macOS (mdrv/macos)"
+license = "GPL-3.0"
+repository = "https://github.com/mdrv/macos"
+
+[[bin]]
+name = "mdrv-macos"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+console = "0.15"
+glob = "0.3"
+hex = "0.4"
+inquire = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+jiff = "0.2"
+
+[profile.release]
+strip = true
+lto = true
