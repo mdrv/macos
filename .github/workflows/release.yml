@@ -17,10 +17,17 @@ jobs:
       matrix:
         # Both slices build from the same macOS runner: Apple's clang ships
         # both architecture slices, so x86_64 is a plain cross-compile.
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+        # dt = MACOSX_DEPLOYMENT_TARGET; values match rustc's target minimums
+        # (mirrors mdrv-oc / mdrv-db).
+        include:
+          - target: aarch64-apple-darwin
+            dt: "11.0"
+          - target: x86_64-apple-darwin
+            dt: "10.12"
     runs-on: macos-latest
     env:
       TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.dt }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
