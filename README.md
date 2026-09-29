@@ -24,6 +24,8 @@ builds. Every script:
 | [git-delta](https://github.com/dandavison/delta) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/git-delta.sh \| sh` |
 | [tree-sitter CLI](https://github.com/tree-sitter/tree-sitter) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/tree-sitter-cli.sh \| sh` |
 | [turso](https://github.com/tursodatabase/turso) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/turso.sh \| sh` |
+| [Node.js](https://nodejs.org) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/node.sh \| sh` |
+| [fnm](https://github.com/Schniz/fnm) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/fnm.sh \| sh` |
 
 ## Options
 
@@ -36,10 +38,10 @@ sh nushell.sh --no-path              # skip the ~/.zshrc offer
 sh nushell.sh --help
 ```
 
-| Flag | Env (nushell / fastfetch / fzf / carapace / unison / git-delta / tree-sitter-cli / turso) | Effect |
+| Flag | Env (nushell / fastfetch / fzf / carapace / unison / git-delta / tree-sitter-cli / turso / node / fnm) | Effect |
 | --- | --- | --- |
-| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` / `UNISON_VERSION` / `DELTA_VERSION` / `TREE_SITTER_VERSION` / `TURSO_VERSION` | pin a release |
-| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` / `UNISON_PREFIX` / `DELTA_PREFIX` / `TREE_SITTER_PREFIX` / `TURSO_PREFIX` | install root (binaries land in `DIR/bin`) |
+| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` / `UNISON_VERSION` / `DELTA_VERSION` / `TREE_SITTER_VERSION` / `TURSO_VERSION` / `NODE_VERSION` / `FNM_VERSION` | pin a release |
+| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` / `UNISON_PREFIX` / `DELTA_PREFIX` / `TREE_SITTER_PREFIX` / `TURSO_PREFIX` / `NODE_PREFIX` / `FNM_PREFIX` | install root (binaries land in `DIR/bin`) |
 | `--no-path` | — | skip the PATH offer |
 | `--no-shell` | — | nushell only: skip the login-shell offer |
 
@@ -51,7 +53,8 @@ Upgrading is just running the script again.
   with no shared library, so it can be fetched and piped with one `curl`.
   Duplicated boilerplate between scripts is accepted for that property.
 - Only official release archives are used, and checksums are always
-  verified against GitHub's asset digests.
+  verified — against GitHub's per-asset digest, or the project's own
+  checksum file when GitHub doesn't publish one (Node's `SHASUMS256.txt`).
 - Other platforms are out of scope here: Nushell has
   [mdrv/nui](https://github.com/mdrv/nui) (macOS & Linux), Windows tools
   have `winget`/`scoop`, and Linux has distro packages.
