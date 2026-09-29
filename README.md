@@ -20,6 +20,7 @@ builds. Every script:
 | [fastfetch](https://github.com/fastfetch-cli/fastfetch) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/fastfetch.sh \| sh` |
 | [fzf](https://github.com/junegunn/fzf) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/fzf.sh \| sh` |
 | [carapace](https://carapace.sh) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/carapace.sh \| sh` |
+| [unison](https://github.com/bcpierce00/unison) | `curl -fsSL https://raw.githubusercontent.com/mdrv/macos/main/apps/unison.sh \| sh` |
 
 ## Options
 
@@ -32,10 +33,10 @@ sh nushell.sh --no-path              # skip the ~/.zshrc offer
 sh nushell.sh --help
 ```
 
-| Flag | Env (nushell / fastfetch / fzf / carapace) | Effect |
+| Flag | Env (nushell / fastfetch / fzf / carapace / unison) | Effect |
 | --- | --- | --- |
-| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` | pin a release |
-| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` | install root (binaries land in `DIR/bin`) |
+| `--version X` | `NU_VERSION` / `FASTFETCH_VERSION` / `FZF_VERSION` / `CARAPACE_VERSION` / `UNISON_VERSION` | pin a release |
+| `--prefix DIR` | `NU_PREFIX` / `FASTFETCH_PREFIX` / `FZF_PREFIX` / `CARAPACE_PREFIX` / `UNISON_PREFIX` | install root (binaries land in `DIR/bin`) |
 | `--no-path` | — | skip the PATH offer |
 | `--no-shell` | — | nushell only: skip the login-shell offer |
 
